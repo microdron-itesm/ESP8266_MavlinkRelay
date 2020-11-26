@@ -29,7 +29,7 @@ ICACHE_RAM_ATTR void picInterrupt(){
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(115200);
+  Serial.begin(115200, SERIAL_8N1);
   //Serial.println("Starting connection");
 
   WiFi.begin(ssid, password);
@@ -41,7 +41,7 @@ void setup() {
   //Serial.println("Connected");
 
   pinMode(2, INPUT);
-  attachInterrupt(digitalPinToInterrupt(2), picInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(2), picInterrupt, CHANGE);
 
   udp.begin(listenPort);
   sendUdp.begin(sendPort);
@@ -63,7 +63,7 @@ void loop() {
     }
   }
 
-  if(cts and !udpMsg.empty()){
+  if(cts && !udpMsg.empty()){
     const auto &msg = udpMsg.front();
     if(currentByteSent == 0){
       msgSize = mavlink_msg_to_send_buffer(serialBuffer, &msg);
@@ -74,13 +74,12 @@ void loop() {
       currentByteSent = 0;
     } else {
       Serial.write(serialBuffer[currentByteSent++]);
+      cts = false;
     }
-
-    cts = false;
   }
 
   // // //Recv from serial
-  while(Serial.available() > 0){
+  if(Serial.available() > 0){
     uint8_t byte = Serial.read();
     if (mavlink_parse_char(MAVLINK_COMM_0, byte, &serialMsg, &serialStatus)){
 
@@ -89,8 +88,7 @@ void loop() {
         sendUdp.beginPacket(udp.remoteIP(), sendPort);
         sendUdp.write(serialBuffer, msgLen);
         sendUdp.endPacket();
+        return;
     }
   }
-
-  //delay(10);
 }
