@@ -10,17 +10,19 @@ WiFiUDP udp, sendUdp;
 uint8_t incomingPacket[8192];
 uint8_t serialBuffer[8192];
 
+const unsigned int tcpPort = 14552;
 const unsigned int listenPort = 14551;
 const unsigned int sendPort = 14550;
-mavlink_message_t serialMsg;
-std::queue<mavlink_message_t> udpMsg;
 
+WiFiServer tcpServer(tcpPort);
 
-size_t currentByteSent = 0;
 size_t msgSize = 0;
 
-mavlink_message_t currentUdpMsg;
-mavlink_status_t status, serialStatus;
+mavlink_message_t currentUdpMsg, currentTcpMsg;
+mavlink_status_t udpStatus, tcpStatus;
+
+mavlink_message_t udpSerialMsg, tcpSerialMsg;
+mavlink_status_t serialStatusUDP, serialStatusTCP;
 
 void setup() {
   // put your setup code here, to run once:
@@ -37,42 +39,50 @@ void setup() {
 
   udp.begin(listenPort);
   sendUdp.begin(sendPort);
+
+  tcpServer.begin();
 }
 
 void loop() {
-  //Recv from udp, store in buffer
-  if(udpMsg.size() < 5){
     auto packetSize = udp.parsePacket();
     if(packetSize){
       int len = udp.read(incomingPacket, sizeof(incomingPacket));
       for(int i = 0; i < len; ++i){
-        if(mavlink_parse_char(MAVLINK_COMM_0, incomingPacket[i], &currentUdpMsg, &status)){
-          udpMsg.emplace(currentUdpMsg);
-          memset(&currentUdpMsg, 0, sizeof(currentUdpMsg));
-          memset(&status, 0, sizeof(status));
+        if(mavlink_parse_char(MAVLINK_COMM_0, incomingPacket[i], &currentUdpMsg, &udpStatus)) {
+            msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentUdpMsg);
+            Serial.write(serialBuffer, msgSize);
         }
       }
     }
-  }
 
-  if(!udpMsg.empty()){
-    const auto &msg = udpMsg.front();
-    msgSize = mavlink_msg_to_send_buffer(serialBuffer, &msg);
-    Serial.write(serialBuffer, msgSize);
-    udpMsg.pop();
-  }
+    WiFiClient client = tcpServer.available();
+    if(client && client.connected()){
+        while(client.available()){
+            auto c = client.read();
+            if(mavlink_parse_char(MAVLINK_COMM_1, c, &currentTcpMsg, &tcpStatus)) {
+                msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentTcpMsg);
+                Serial.write(serialBuffer, msgSize);
+            }
+        }
+    }
 
   // // //Recv from serial
   while(Serial.available()){
     uint8_t byte = Serial.read();
-    if (mavlink_parse_char(MAVLINK_COMM_0, byte, &serialMsg, &serialStatus)){
-
+    if (mavlink_parse_char(MAVLINK_COMM_0, byte, &udpSerialMsg, &serialStatusUDP)){
         //Send to udp
-        uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &serialMsg);
+        uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &udpSerialMsg);
         sendUdp.beginPacket(udp.remoteIP(), sendPort);
         sendUdp.write(serialBuffer, msgLen);
         sendUdp.endPacket();
         return;
     }
+
+      if (mavlink_parse_char(MAVLINK_COMM_1, byte, &tcpSerialMsg, &serialStatusTCP)){
+          //Send to tcp
+          uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &udpSerialMsg);
+          tcpServer.write(serialBuffer, msgLen);
+          return;
+      }
   }
 }
