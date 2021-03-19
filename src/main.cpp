@@ -21,8 +21,8 @@ size_t msgSize = 0;
 mavlink_message_t currentUdpMsg, currentTcpMsg;
 mavlink_status_t udpStatus, tcpStatus;
 
-mavlink_message_t udpSerialMsg, tcpSerialMsg;
-mavlink_status_t serialStatusUDP, serialStatusTCP;
+mavlink_message_t serialMsg;
+mavlink_status_t serialStatusUDP;
 
 void setup() {
   // put your setup code here, to run once:
@@ -59,7 +59,7 @@ void loop() {
     if(client && client.connected()){
         while(client.available()){
             auto c = client.read();
-            if(mavlink_parse_char(MAVLINK_COMM_1, c, &currentTcpMsg, &tcpStatus)) {
+            if(mavlink_parse_char(MAVLINK_COMM_0, c, &currentTcpMsg, &tcpStatus)) {
                 msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentTcpMsg);
                 Serial.write(serialBuffer, msgSize);
             }
@@ -69,20 +69,15 @@ void loop() {
   // // //Recv from serial
   while(Serial.available()){
     uint8_t byte = Serial.read();
-    if (mavlink_parse_char(MAVLINK_COMM_0, byte, &udpSerialMsg, &serialStatusUDP)){
-        //Send to udp
-        uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &udpSerialMsg);
-        sendUdp.beginPacket(udp.remoteIP(), sendPort);
-        sendUdp.write(serialBuffer, msgLen);
-        sendUdp.endPacket();
-        return;
+    if (mavlink_parse_char(MAVLINK_COMM_0, byte, &serialMsg, &serialStatusUDP)){
+        uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &serialMsg);
+        if(serialMsg.sysid == 2){
+            tcpServer.write(serialBuffer, msgLen);
+        } else {
+            sendUdp.beginPacket(udp.remoteIP(), sendPort);
+            sendUdp.write(serialBuffer, msgLen);
+            sendUdp.endPacket();
+        }
     }
-
-      if (mavlink_parse_char(MAVLINK_COMM_1, byte, &tcpSerialMsg, &serialStatusTCP)){
-          //Send to tcp
-          uint16_t msgLen = mavlink_msg_to_send_buffer(serialBuffer, &udpSerialMsg);
-          tcpServer.write(serialBuffer, msgLen);
-          return;
-      }
   }
 }
