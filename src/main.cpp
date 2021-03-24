@@ -26,7 +26,7 @@ mavlink_status_t serialStatusUDP;
 
 void setup() {
     // put your setup code here, to run once:
-    Serial.begin(230400, SERIAL_8N1);
+    Serial.begin(230400 * 2, SERIAL_8N1);
     //Serial.println("Starting connection");
 
     WiFi.begin(ssid, password);
@@ -46,26 +46,25 @@ void setup() {
 
 void loop() {
     auto packetSize = udp.parsePacket();
-    while (packetSize) {
+    if (packetSize) {
         int len = udp.read(incomingPacket, sizeof(incomingPacket));
         for (int i = 0; i < len; ++i) {
             if (mavlink_parse_char(MAVLINK_COMM_0, incomingPacket[i], &currentUdpMsg, &udpStatus)) {
                 msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentUdpMsg);
                 Serial.write(serialBuffer, msgSize);
-                //Serial.flush();
+                Serial.flush();
             }
         }
-        packetSize = udp.parsePacket();
     }
 
-    while(client.available()){
-        char c = client.read();
-        if(mavlink_parse_char(MAVLINK_COMM_1, c, &currentTcpMsg, &tcpStatus)){
-            msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentTcpMsg);
-            Serial.write(serialBuffer, msgSize);
-            Serial.flush();
-        }
-    }
+//    while(client.available()){
+//        char c = client.read();
+//        if(mavlink_parse_char(MAVLINK_COMM_1, c, &currentTcpMsg, &tcpStatus)){
+//            msgSize = mavlink_msg_to_send_buffer(serialBuffer, &currentTcpMsg);
+//            Serial.write(serialBuffer, msgSize);
+//            Serial.flush();
+//        }
+//    }
 
 //    if(udp.remoteIP() and !client.connected()){
 //        client.connect(udp.remoteIP(), tcpPort);
